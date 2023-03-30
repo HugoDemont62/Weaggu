@@ -1,5 +1,6 @@
 package fr.hugodemont.weaggu
 
+import android.annotation.SuppressLint
 import android.location.Address
 import android.location.Geocoder
 import android.os.Bundle
@@ -50,7 +51,6 @@ class MainActivity : AppCompatActivity() {
             "Rome" to Pair(41.9028, 12.4964),
             // ajouter d'autres villes européennes ici
         )
-
         val randomCity = cities.entries.random()
         val cityCoordinates = randomCity.value
         val lat = cityCoordinates.first + (Math.random() * 0.2 - 0.1)
@@ -67,27 +67,86 @@ class MainActivity : AppCompatActivity() {
             val url =
                 URL("http://api.weatherapi.com/v1/current.json?key=4be4887a07e34f968cd95452232203&q=$location&aqi=no")
             val connection = url.openConnection() as HttpURLConnection
-
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/json")
             if (connection.responseCode == 200) {
                 val inputSystem = connection.inputStream
                 val inputStreamReader = InputStreamReader(inputSystem, "UTF-8")
-                val request = Gson().fromJson(inputStreamReader, Request::class.java)
-                updateUI(request)
+                val response = Gson().fromJson(inputStreamReader, WeatherResponse::class.java)
+                updateUI(response.location.name, response.current.temp_c, response.current.condition.text)
                 inputStreamReader.close()
                 inputSystem.close()
+                println("Success: ${connection.responseCode}")
             } else {
                 println("Error: ${connection.responseCode}")
             }
         }
     }
 
-    private fun updateUI(request: Request) {
+    @SuppressLint("SetTextI18n")
+    private fun updateUI(cityName: String, temperature: Double, condition: String) {
         runOnUiThread {
             kotlin.run {
-                val cityName = findViewById<TextView>(R.id.idCityName)
-                cityName.text = request.name
+                val cityNameTextView = findViewById<TextView>(R.id.idCityName)
+                cityNameTextView.text = cityName
+
+                val temperatureTextView = findViewById<TextView>(R.id.idTemperature)
+                temperatureTextView.text = "$temperature °C"
+
+                val conditionTextView = findViewById<TextView>(R.id.idCondition)
+                conditionTextView.text = condition
             }
         }
     }
+
+    data class WeatherResponse(
+        val location: Location,
+        val current: Current
+    )
+
+    data class Location(
+        val name: String,
+        val region: String,
+        val country: String,
+        val lat: Double,
+        val lon: Double,
+        val tz_id: String,
+        val localtime_epoch: Long,
+        val localtime: String
+    )
+
+    data class Current(
+        val last_updated_epoch: Long,
+        val last_updated: String,
+        val temp_c: Double,
+        val temp_f: Double,
+        val is_day: Int,
+        val condition: Condition,
+        val wind_mph: Double,
+        val wind_kph: Double,
+        val wind_degree: Int,
+        val wind_dir: String,
+        val pressure_mb: Double,
+        val pressure_in: Double,
+        val precip_mm: Double,
+        val precip_in: Double,
+        val humidity: Int,
+        val cloud: Int,
+        val feelslike_c: Double,
+        val feelslike_f: Double,
+        val vis_km: Double,
+        val vis_miles: Double,
+        val uv: Double,
+        val gust_mph: Double,
+        val gust_kph: Double
+    )
+
+    data class Condition(
+        val text: String,
+        val icon: String,
+        val code: Int
+    )
+
 }
 

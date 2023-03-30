@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">Weaggu</string>
     <string name="nom_de_la_ville">Nom de la ville</string>
+    <string name="temp_rature">Température</string>
+    <string name="condition_m_t_o">Condition météo</string>
 </resources>
