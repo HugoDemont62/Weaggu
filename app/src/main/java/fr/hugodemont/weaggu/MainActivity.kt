@@ -9,6 +9,7 @@ import android.location.Geocoder
 import android.location.LocationManager
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -31,8 +32,11 @@ class MainActivity : AppCompatActivity() {
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION
-            ),1)
-        fetchCurrencyData().start()
+            ), 1
+        )
+        val location = getLocation()
+        val village = location?.let { hereLocation(it.first, it.second) }
+        village?.let  { fetchData(it) }
     }
 
     private fun hereLocation(lat: Double, lon: Double): String? {
@@ -48,48 +52,14 @@ class MainActivity : AppCompatActivity() {
         } catch (e: IOException) {
             e.printStackTrace()
         }
+        println("$cityName")
         return cityName
-    }
 
-    private fun generateRandomLocation(): Pair<Double, Double> {
-        val random = Random()
-        val lat = random.nextDouble() * 58 - 35 + (Math.random() * 0.2 - 0.1)
-        val lon = random.nextDouble() * 72 - 13 + (Math.random() * 0.2 - 0.1)
-        println("generateRandomLocation: $lat, $lon")
-        return Pair(lat, lon)
     }
-
-    //private fun generateLocationWithEuropeanCity(): Pair<Double, Double> {
-    //    val cities = mapOf(
-    //        "Paris" to Pair(48.8566, 2.3522),
-    //        // ajouter d'autres villes européennes ici
-    //    )
-    //    val randomCity = cities.entries.random()
-    //    val cityCoordinates = randomCity.value
-    //    val lat = cityCoordinates.first + (Math.random() * 0.2 - 0.1)
-    //    val lon = cityCoordinates.second + (Math.random() * 0.2 - 0.1)
-    //    return Pair(lat, lon)
-    //}
 
     private fun getLocation(): Pair<Double, Double>? {
         try {
-
             val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
-            if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                // Affiche un message d'erreur et retourne null.
-                val builder = AlertDialog.Builder(this)
-                builder.setMessage("Veuillez activer votre GPS pour utiliser cette fonctionnalité.")
-                    .setCancelable(false)
-                    .setPositiveButton("Paramètres") { _, _ ->
-                        startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-                    }
-                    .setNegativeButton("Annuler") { dialog, _ ->
-                        dialog.cancel()
-                    }
-                val alert = builder.create()
-                alert.show()
-                return null
-            }
             // Vérifie si le GPS est activé.
             if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 // Affiche un message d'erreur et retourne null.
@@ -106,7 +76,6 @@ class MainActivity : AppCompatActivity() {
                 alert.show()
                 return null
             }
-
             // Vérifie si l'application a l'autorisation d'accéder à la localisation de l'utilisateur.
             if (ActivityCompat.checkSelfPermission(
                     this,
@@ -150,60 +119,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun fetchData(village: String) {
+        println("Location: $village")
+        Thread {
+            try {
+                val url =
+                    URL("https://api.weatherapi.com/v1/current.json?key=4be4887a07e34f968cd95452232203&q=$village&aqi=no")
+                println("$url")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Accept", "application/json")
 
-    private fun fetchCurrencyData(): Thread {
-        return Thread {
-            //GPS location
-            val locationPair = getLocation()
-            val lat = locationPair?.first
-            val lon = locationPair?.second
-            println("lat and lon: $lat, $lon")
-            val location = if (lat != null && lon != null) {
-                hereLocation(lat, lon)
-            } else {
-                generateRandomLocation().let { hereLocation(it.first, it.second) }
+                if (connection.responseCode == 200) {
+                    val inputSystem = connection.inputStream
+                    val inputStreamReader = InputStreamReader(inputSystem, "UTF-8")
+                    val response = Gson().fromJson(inputStreamReader, WeatherResponse::class.java)
+                    runOnUiThread {
+                        updateUI(
+                            response.location.name,
+                            response.current.temp_c,
+                            response.current.condition.text,
+                        )
+                    }
+                    inputStreamReader.close()
+                    inputSystem.close()
+                    println("Success: ${connection.responseCode}")
+                } else {
+                    println("Error: ${connection.responseCode}")
+                }
+            } catch (e: Exception) {
+                println("Exception: ${e.message}")
             }
-            //if (location == null) {
-            //    location = generateLocationWithEuropeanCity().let { hereLocation(it.first, it.second) }
-            //}
-            println("Location: $location")
-            if (location == null) {
-                println("Error: location is null")
-                return@Thread
-            }
-            val url =
-                URL("http://api.weatherapi.com/v1/current.json?key=4be4887a07e34f968cd95452232203&q=$location&aqi=no")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Accept", "application/json")
-            if (connection.responseCode == 200) {
-                val inputSystem = connection.inputStream
-                val inputStreamReader = InputStreamReader(inputSystem, "UTF-8")
-                val response = Gson().fromJson(inputStreamReader, WeatherResponse::class.java)
-                updateUI(
-                    response.location.name,
-                    response.current.temp_c,
-                    response.current.condition.text,
-                    response.location.lat,
-                    response.location.lon
-                )
-                inputStreamReader.close()
-                inputSystem.close()
-                println("Success: ${connection.responseCode}")
-            } else {
-                println("Error: ${connection.responseCode}")
-            }
-        }
+        }.start()
     }
-
     @SuppressLint("SetTextI18n")
     private fun updateUI(
         cityName: String,
         temperature: Double,
         condition: String,
-        lat: Double,
-        lon: Double,
     ) {
         runOnUiThread {
             kotlin.run {
@@ -211,10 +165,25 @@ class MainActivity : AppCompatActivity() {
                 cityNameTextView.text = cityName
 
                 val temperatureTextView = findViewById<TextView>(R.id.idTemperature)
-                temperatureTextView.text = "$temperature °C $lat $lon"
+                temperatureTextView.text = "$temperature °C"
 
-                val conditionTextView = findViewById<TextView>(R.id.idCondition)
+                val conditionTextView = findViewById<TextView>(R.id.idCondition)//Condition va etre une image aussi en plus
                 conditionTextView.text = condition
+
+                if (condition == "Sunny") {
+                    val conditionImageView = findViewById<ImageView>(R.id.idConditionView)
+                    conditionImageView.setImageResource(R.drawable.soleil)
+                } else if (condition == "Partly cloudy") {
+                    val conditionImageView = findViewById<ImageView>(R.id.idConditionView)
+                    conditionImageView.setImageResource(R.drawable.nuagesoleil)
+                } else if (condition == "Cloudy") {
+                    val conditionImageView = findViewById<ImageView>(R.id.idConditionView)
+                    conditionImageView.setImageResource(R.drawable.nuagesoleil)
+                } else if (condition == "rain") {
+                    val conditionImageView = findViewById<ImageView>(R.id.idConditionView)
+                    conditionImageView.setImageResource(R.drawable.rain)
+                }
+
             }
         }
     }
@@ -266,6 +235,7 @@ class MainActivity : AppCompatActivity() {
         val icon: String,
         val code: Int,
     )
+
 
 }
 
